@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for satellite monitoring system */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Alert severity indicators */
+.alert-critical {
+  @apply bg-red-100 border-red-600 text-red-900;
+}
+
+.alert-warning {
+  @apply bg-yellow-100 border-yellow-600 text-yellow-900;
+}
+
+.alert-info {
+  @apply bg-blue-100 border-blue-600 text-blue-900;
+}
+
+/* Satellite status indicators */
+.status-safe {
+  @apply text-green-600 bg-green-100;
+}
+
+.status-warning {
+  @apply text-yellow-600 bg-yellow-100;
+}
+
+.status-danger {
+  @apply text-red-600 bg-red-100;
+}
+
+/* Animation for real-time updates */
+.pulse-animation {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Custom scrollbar for alerts panel */
+.alerts-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.alerts-scroll::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.alerts-scroll::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.alerts-scroll::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

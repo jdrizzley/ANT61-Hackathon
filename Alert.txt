@@ -1,0 +1,354 @@
+import { useMemo, useState } from "react";
+import { ConjunctionEvent, SpaceWeatherAlert, SuggestedAction } from "../types/Satellite";
+
+interface Props {
+  alerts: string[];
+  conjunctions: ConjunctionEvent[];
+  spaceWeatherAlerts: SpaceWeatherAlert[];
+  onExecuteAction?: (satelliteId: string, action: SuggestedAction) => void;
+}
+
+export default function AlertPanel({
+  alerts,
+  conjunctions,
+  spaceWeatherAlerts,
+  onExecuteAction,
+}: Props) {
+  // UI state
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+  const [dismissedConjunctions, setDismissedConjunctions] = useState<Set<string>>(new Set());
+  const [dismissedSpaceWx, setDismissedSpaceWx] = useState<Set<string>>(new Set());
+
+  // -------- Helpers --------
+  const toggleExpanded = (id: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleDismissAlert = (alert: string) =>
+    setDismissedAlerts(prev => new Set(prev).add(alert));
+
+  const handleDismissConjunction = (id: string) =>
+    setDismissedConjunctions(prev => new Set(prev).add(id));
+
+  const handleDismissSpaceWx = (id: string) =>
+    setDismissedSpaceWx(prev => new Set(prev).add(id));
+
+  const getAlertSeverity = (text: string) => {
+    const t = text.toUpperCase();
+    if (t.includes("HIGH RISK") || t.includes("FAST CME") || t.includes("CRITICAL")) return "critical";
+    if (t.includes("MEDIUM RISK") || t.includes("WARNING")) return "warning";
+    return "info";
+  };
+
+  const getSeverityStyles = (severity: "critical" | "warning" | "info" | string) => {
+    switch (severity) {
+      case "critical": return "bg-red-100 border-red-600 text-red-900";
+      case "warning":  return "bg-yellow-100 border-yellow-600 text-yellow-900";
+      case "info":     return "bg-blue-100 border-blue-600 text-blue-900";
+      default:         return "bg-gray-100 border-gray-600 text-gray-900";
+    }
+  };
+
+  const getPriorityPill = (priority?: string) => {
+    switch (priority) {
+      case "critical": return "bg-red-600";
+      case "high":     return "bg-orange-600";
+      case "medium":   return "bg-yellow-600";
+      case "low":      return "bg-green-600";
+      default:         return "bg-gray-600";
+    }
+  };
+
+  const execButtonClass = (priority?: string) => {
+    switch (priority) {
+      case "critical": return "bg-red-600 hover:bg-red-700 text-white";
+      case "high":     return "bg-orange-600 hover:bg-orange-700 text-white";
+      case "medium":   return "bg-yellow-600 hover:bg-yellow-700 text-white";
+      default:         return "bg-blue-600 hover:bg-blue-700 text-white";
+    }
+  };
+
+  const formatTimeToTCA = (tcaISO: string) => {
+    const dt = new Date(tcaISO).getTime() - Date.now();
+    const mins = Math.round(dt / 60000);
+    const hrs = Math.floor(mins / 60);
+    const days = Math.floor(hrs / 24);
+    if (days > 0) return `${days}d ${hrs % 24}h`;
+    if (hrs > 0) return `${hrs}h ${mins % 60}m`;
+    return `${mins}m`;
+  };
+
+  // Generate stable ids for items (so dismiss/expand works reliably)
+  const withIds = useMemo(() => {
+    const conj = conjunctions.map((c, i) => ({
+      ...c,
+      _id: (c as any).id ?? `${c.satelliteId}-${c.tca}-${i}`,
+    }));
+    const swx = spaceWeatherAlerts.map((a, i) => ({
+      ...a,
+      _id: (a as any).id ?? `${a.type}-${a.timestamp}-${i}`,
+    }));
+    return { conj, swx };
+  }, [conjunctions, spaceWeatherAlerts]);
+
+  // Visible (not dismissed)
+  const visibleAlerts = useMemo(
+    () => alerts.filter(a => !dismissedAlerts.has(a)),
+    [alerts, dismissedAlerts]
+  );
+
+  const visibleConjunctions = useMemo(
+    () => withIds.conj.filter(c => !dismissedConjunctions.has(c._id)),
+    [withIds.conj, dismissedConjunctions]
+  );
+
+  const visibleSpaceWx = useMemo(
+    () => withIds.swx.filter(a => !dismissedSpaceWx.has(a._id)),
+    [withIds.swx, dismissedSpaceWx]
+  );
+
+  const totalActive = visibleAlerts.length + visibleConjunctions.length + visibleSpaceWx.length;
+
+  // -------- Render --------
+  return (
+    <div className="p-6 border rounded-lg bg-gradient-to-br from-red-50 to-orange-50">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">🚨 Real-Time Alerts</h2>
+        <div className="text-sm text-gray-600">{totalActive} active alert{totalActive === 1 ? "" : "s"}</div>
+      </div>
+
+      {totalActive === 0 ? (
+        <div className="p-4 bg-green-100 text-green-800 rounded-lg text-center">
+          ✅ All systems nominal. No threats detected.
+        </div>
+      ) : (
+        <div className="space-y-4 max-h-96 overflow-y-auto">
+          {/* General Alerts */}
+          {visibleAlerts.length > 0 && (
+            <>
+              {visibleAlerts.map((text, i) => {
+                const severity = getAlertSeverity(text);
+                return (
+                  <div
+                    key={`ga-${i}`}
+                    className={`p-4 rounded-lg border-l-4 ${getSeverityStyles(severity)}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <p className="font-medium pr-4">{text}</p>
+                      <button
+                        className="text-sm px-3 py-1 rounded bg-gray-600 text-white hover:bg-gray-700"
+                        onClick={() => handleDismissAlert(text)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {/* Conjunction Alerts */}
+          {visibleConjunctions.length > 0 && (
+            <>
+              {visibleConjunctions.map((c) => {
+                const alertId = `conj-${c._id}`;
+                const isOpen = expanded.has(alertId);
+                const severity =
+                  c.risk === "high" ? "critical" : c.risk === "medium" ? "warning" : "info";
+
+                return (
+                  <div key={alertId} className={`p-4 rounded-lg border-l-4 ${getSeverityStyles(severity)}`}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-semibold">
+                            {c.risk === "high" ? "🚨" : c.risk === "medium" ? "⚠️" : "ℹ️"} Collision Risk: {c.objectName}
+                          </h3>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium text-white ${getPriorityPill(c.risk)}`}>
+                            {c.risk?.toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 text-sm mb-3">
+                          <div><span className="font-medium">Satellite:</span> {c.satelliteId}</div>
+                          <div><span className="font-medium">Time to TCA:</span> {formatTimeToTCA(c.tca)}</div>
+                          <div><span className="font-medium">Miss Distance:</span> {c.missDistance} km</div>
+                          <div><span className="font-medium">Relative Velocity:</span> {c.relativeVelocity} km/s</div>
+                        </div>
+
+                        {c.suggestedAction && (
+                          <div className="mt-3 pt-3 border-t border-current/20">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-medium">Suggested Action</h4>
+                              <button
+                                onClick={() => toggleExpanded(alertId)}
+                                className="text-sm underline hover:no-underline"
+                              >
+                                {isOpen ? "Hide Details" : "Show Details"}
+                              </button>
+                            </div>
+
+                            <p className="text-sm mb-2">{c.suggestedAction.description}</p>
+
+                            {isOpen && (
+                              <div className="space-y-2 text-sm">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div><span className="font-medium">Priority:</span> {c.suggestedAction.priority}</div>
+                                  <div><span className="font-medium">Success Probability:</span> {(c.suggestedAction.successProbability ?? 0) * 100}%</div>
+                                  {c.suggestedAction.estimatedFuelCost != null && (
+                                    <div><span className="font-medium">Fuel Cost:</span> {c.suggestedAction.estimatedFuelCost} kg</div>
+                                  )}
+                                  {c.suggestedAction.estimatedTimeToExecute != null && (
+                                    <div><span className="font-medium">Execution Time:</span> {c.suggestedAction.estimatedTimeToExecute} min</div>
+                                  )}
+                                </div>
+
+                                {c.suggestedAction.parameters && (
+                                  <div className="mt-2">
+                                    <span className="font-medium">Parameters:</span>
+                                    <div className="ml-4 space-y-1">
+                                      {"deltaV" in c.suggestedAction.parameters && (
+                                        <div>ΔV: {(c.suggestedAction.parameters as any).deltaV} m/s</div>
+                                      )}
+                                      {"burnDuration" in c.suggestedAction.parameters && (
+                                        <div>Burn Duration: {(c.suggestedAction.parameters as any).burnDuration} s</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="mt-3 flex gap-2">
+                              <button
+                                onClick={() => {
+                                  if (onExecuteAction && c.suggestedAction) {
+                                    onExecuteAction(c.satelliteId, c.suggestedAction);
+                                  }
+                                }}
+                                className={`px-3 py-1 rounded text-sm font-medium ${execButtonClass(c.suggestedAction?.priority)}`}
+                              >
+                                Execute Action
+                              </button>
+                              <button
+                                onClick={() => handleDismissConjunction(c._id)}
+                                className="px-3 py-1 rounded text-sm font-medium bg-gray-600 text-white hover:bg-gray-700"
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {/* Space Weather Alerts */}
+          {visibleSpaceWx.length > 0 && (
+            <>
+              {visibleSpaceWx.map((a) => {
+                const alertId = `swx-${a._id}`;
+                const isOpen = expanded.has(alertId);
+                const severity =
+                  a.severity === "critical" ? "critical" :
+                  a.severity === "high" ? "warning" : "info";
+
+                return (
+                  <div key={alertId} className={`p-4 rounded-lg border-l-4 ${getSeverityStyles(severity)}`}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-semibold">
+                            {a.type === "cme" ? "☀️" : a.type === "geomagnetic" ? "🌪️" : "⚠️"}{" "}
+                            {a.type.replace("_", " ").toUpperCase()}: {a.message}
+                          </h3>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium text-white ${getPriorityPill(a.severity)}`}>
+                            {a.severity.toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div className="text-sm mb-3">
+                          <div><span className="font-medium">Timestamp:</span> {new Date(a.timestamp).toLocaleString()}</div>
+                          {a.affectedSatellites?.length ? (
+                            <div>
+                              <span className="font-medium">Affected Satellites:</span> {a.affectedSatellites.join(", ")}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {a.suggestedAction && (
+                          <div className="mt-3 pt-3 border-t border-current/20">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-medium">Suggested Action</h4>
+                              <button
+                                onClick={() => toggleExpanded(alertId)}
+                                className="text-sm underline hover:no-underline"
+                              >
+                                {isOpen ? "Hide Details" : "Show Details"}
+                              </button>
+                            </div>
+
+                            <p className="text-sm mb-2">{a.suggestedAction.description}</p>
+
+                            {isOpen && (
+                              <div className="space-y-2 text-sm">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div><span className="font-medium">Type:</span> {a.suggestedAction.type.replace("_", " ")}</div>
+                                  <div><span className="font-medium">Priority:</span> {a.suggestedAction.priority}</div>
+                                  {a.suggestedAction.estimatedTimeToExecute != null && (
+                                    <div><span className="font-medium">Execution Time:</span> {a.suggestedAction.estimatedTimeToExecute} min</div>
+                                  )}
+                                  <div><span className="font-medium">Success Probability:</span> {(a.suggestedAction.successProbability ?? 0) * 100}%</div>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="mt-3 flex gap-2">
+                              <button
+                                onClick={() => {
+                                  if (onExecuteAction && a.suggestedAction) {
+                                    // If affected satellites list exists, trigger for each; otherwise no-op
+                                    (a.affectedSatellites ?? []).forEach(satId =>
+                                      onExecuteAction(satId, a.suggestedAction as SuggestedAction)
+                                    );
+                                  }
+                                }}
+                                className={`px-3 py-1 rounded text-sm font-medium ${execButtonClass(a.suggestedAction?.priority)}`}
+                              >
+                                Execute Action
+                              </button>
+                              <button
+                                onClick={() => handleDismissSpaceWx(a._id)}
+                                className="px-3 py-1 rounded text-sm font-medium bg-gray-600 text-white hover:bg-gray-700"
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="mt-4 text-xs text-gray-600 text-center">
+        Data Sources: CelesTrak (TLE) • NASA DONKI (CME) • NOAA (Space Weather) • Updates every 30s
+      </div>
+    </div>
+  );
+}
